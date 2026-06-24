@@ -23,15 +23,11 @@ def send_telegram(msg):
 
 def bybit_post(endpoint, params):
     try:
-        ts       = str(int(time.time() * 1000))
-        rw       = "5000"
-        body     = json.dumps(params, ensure_ascii=True)
-        to_sign  = ts + BYBIT_API_KEY + rw + body
-        sig      = hmac.new(
-            BYBIT_API_SECRET.encode(),
-            to_sign.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        ts      = str(int(time.time() * 1000))
+        rw      = "5000"
+        body    = json.dumps(params)
+        sign_in = ts + BYBIT_API_KEY + rw + body
+        sig     = hmac.new(BYBIT_API_SECRET.encode(), sign_in.encode(), hashlib.sha256).hexdigest()
         headers = {
             "X-BAPI-API-KEY":     BYBIT_API_KEY,
             "X-BAPI-TIMESTAMP":   ts,
@@ -40,9 +36,14 @@ def bybit_post(endpoint, params):
             "Content-Type":       "application/json"
         }
         r = requests.post(BYBIT_URL + endpoint, data=body, headers=headers, timeout=10)
-        result = r.json()
-        print("Bybit response:", result)
-        return result
+        print("STATUS:", r.status_code)
+        print("RESPONSE:", r.text[:500])
+        try:
+            return r.json()
+        except Exception as e:
+            print("JSON parse error:", e)
+            send_telegram("Bybit raw response:\n" + r.text[:300])
+            return {"retCode": -1, "retMsg": r.text[:200]}
     except Exception as e:
         print("Bybit error:", e)
         return {"retCode": -1, "retMsg": str(e)}
@@ -87,32 +88,30 @@ def webhook():
                 "positionIdx": 0
             })
 
-            rc  = result.get("retCode", -1)
-            rm  = result.get("retMsg", "Hata")
+            rc = result.get("retCode", -1)
+            rm = result.get("retMsg", "Hata")
 
             if rc == 0:
-                msg = (emoji + " <b>" + signal + " ACILDI - " + symbol + "</b>\n"
-                       "-------------------\n"
-                       "Giris: <b>" + entry + "$</b>\n"
-                       "SL: <b>" + sl + "$</b>\n"
-                       "TP1: <b>" + tp1 + "$</b>\n"
-                       "TP2: <b>" + tp2 + "$</b>\n"
-                       "Kaldirac: <b>" + str(leverage) + "x</b>\n"
-                       "Miktar: <b>" + str(qty) + "</b>\n"
-                       "Bybit onayladi!\n" + now)
+                msg = (emoji + " " + signal + " ACILDI - " + symbol + "\n"
+                       "Giris: " + entry + "$\n"
+                       "SL: " + sl + "$\n"
+                       "TP1: " + tp1 + "$\n"
+                       "TP2: " + tp2 + "$\n"
+                       "Kaldirac: " + str(leverage) + "x\n"
+                       "Miktar: " + str(qty) + "\n"
+                       "Bybit onayladi! " + now)
             else:
-                msg = ("HATA - " + signal + " - " + symbol + "\n"
+                msg = ("HATA " + signal + " " + symbol + "\n"
                        "Kod: " + str(rc) + "\n"
                        "Mesaj: " + rm + "\n" + now)
-
         elif signal == "TP1":
-            msg = "TP1 HIT - " + symbol + "\nKar: +" + str(float(risk)*1.5) + "$\n" + now
+            msg = "TP1 HIT " + symbol + " Kar:+" + str(float(risk)*1.5) + "$ " + now
         elif signal == "TP2":
-            msg = "TP2 HIT - " + symbol + "\nKar: +" + str(float(risk)*5.0) + "$\n" + now
+            msg = "TP2 HIT " + symbol + " Kar:+" + str(float(risk)*5.0) + "$ " + now
         elif signal == "SL":
-            msg = "SL HIT - " + symbol + "\nZarar: -" + risk + "$\n" + now
+            msg = "SL HIT " + symbol + " Zarar:-" + risk + "$ " + now
         else:
-            msg = signal + " | " + symbol + " | " + now
+            msg = signal + " " + symbol + " " + now
 
         send_telegram(msg)
         return jsonify({"status": "ok"})
