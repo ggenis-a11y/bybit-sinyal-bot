@@ -22,7 +22,7 @@ def send_telegram(message):
         print(f"Telegram error: {e}")
 
 def bybit_request(endpoint, params):
-    try:
+    try:a
         ts        = str(int(time.time() * 1000))
         recv_win  = "5000"
         body_str  = json.dumps(params)
