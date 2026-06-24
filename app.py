@@ -9,62 +9,43 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "384728743")
 WEBHOOK_SECRET   = os.environ.get("WEBHOOK_SECRET",   "bybit2024")
 BYBIT_API_KEY    = os.environ.get("BYBIT_API_KEY",    "igo1oiqmAHSPVJWVeQ")
 BYBIT_API_SECRET = os.environ.get("BYBIT_API_SECRET", "8mPzVVVzziZkCt1fhqnypNBXH8bFHNljCJGe")
-BYBIT_BASE_URL   = "https://api.bybit.com"
+BYBIT_URL        = "https://api.bybit.com"
 
-def send_telegram(message):
+def send_telegram(msg):
     try:
         requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"},
+            "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage",
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"},
             timeout=10
         )
     except Exception as e:
-        print(f"Telegram error: {e}")
+        print("Telegram error:", e)
 
-def bybit_request(endpoint, params):
-    try:a
-        ts        = str(int(time.time() * 1000))
-        recv_win  = "5000"
-        body_str  = json.dumps(params)
-        sign_str  = ts + BYBIT_API_KEY + recv_win + body_str
-        signature = hmac.new(
-            BYBIT_API_SECRET.encode("utf-8"),
-            sign_str.encode("utf-8"),
+def bybit_post(endpoint, params):
+    try:
+        ts       = str(int(time.time() * 1000))
+        rw       = "5000"
+        body     = json.dumps(params, ensure_ascii=True)
+        to_sign  = ts + BYBIT_API_KEY + rw + body
+        sig      = hmac.new(
+            BYBIT_API_SECRET.encode(),
+            to_sign.encode(),
             hashlib.sha256
         ).hexdigest()
         headers = {
             "X-BAPI-API-KEY":     BYBIT_API_KEY,
             "X-BAPI-TIMESTAMP":   ts,
-            "X-BAPI-SIGN":        signature,
-            "X-BAPI-RECV-WINDOW": recv_win,
+            "X-BAPI-SIGN":        sig,
+            "X-BAPI-RECV-WINDOW": rw,
             "Content-Type":       "application/json"
         }
-        r = requests.post(BYBIT_BASE_URL + endpoint, data=body_str, headers=headers, timeout=10)
-        return r.json()
+        r = requests.post(BYBIT_URL + endpoint, data=body, headers=headers, timeout=10)
+        result = r.json()
+        print("Bybit response:", result)
+        return result
     except Exception as e:
-        print(f"Bybit error: {e}")
+        print("Bybit error:", e)
         return {"retCode": -1, "retMsg": str(e)}
-
-def set_leverage(symbol, leverage):
-    return bybit_request("/v5/position/set-leverage", {
-        "category":     "linear",
-        "symbol":       symbol,
-        "buyLeverage":  str(leverage),
-        "sellLeverage": str(leverage)
-    })
-
-def open_position(symbol, side, qty, sl, tp1):
-    return bybit_request("/v5/order/create", {
-        "category":    "linear",
-        "symbol":      symbol,
-        "side":        side,
-        "orderType":   "Market",
-        "qty":         str(qty),
-        "stopLoss":    str(sl),
-        "takeProfit":  str(tp1),
-        "timeInForce": "GTC",
-        "positionIdx": 0
-    })
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -86,58 +67,69 @@ def webhook():
         if signal in ["LONG", "SHORT"]:
             side  = "Buy" if signal == "LONG" else "Sell"
             emoji = "🟢" if signal == "LONG" else "🔴"
-            set_leverage(symbol, leverage)
-            result   = open_position(symbol, side, qty, sl, tp1)
-            ret_code = result.get("retCode", -1)
-            ret_msg  = result.get("retMsg", "Bilinmeyen hata")
-            if ret_code == 0:
-                msg = (f"{emoji} <b>{signal} AÇILDI — {symbol}</b>\n"
-                       f"━━━━━━━━━━━━━━━━━━\n"
-                       f"📍 Giriş: <b>{entry}$</b>\n"
-                       f"🛑 SL: <b>{sl}$</b> (-{risk}$)\n"
-                       f"🎯 TP1: <b>{tp1}$</b>\n"
-                       f"🎯 TP2: <b>{tp2}$</b>\n"
-                       f"⚡ Kaldıraç: <b>{leverage}x</b>\n"
-                       f"📦 Miktar: <b>{qty}</b>\n"
-                       f"━━━━━━━━━━━━━━━━━━\n"
-                       f"✅ Bybit'e gönderildi\n🕐 {now}")
+
+            bybit_post("/v5/position/set-leverage", {
+                "category": "linear",
+                "symbol": symbol,
+                "buyLeverage": str(leverage),
+                "sellLeverage": str(leverage)
+            })
+
+            result = bybit_post("/v5/order/create", {
+                "category":    "linear",
+                "symbol":      symbol,
+                "side":        side,
+                "orderType":   "Market",
+                "qty":         str(qty),
+                "stopLoss":    str(sl),
+                "takeProfit":  str(tp1),
+                "timeInForce": "GTC",
+                "positionIdx": 0
+            })
+
+            rc  = result.get("retCode", -1)
+            rm  = result.get("retMsg", "Hata")
+
+            if rc == 0:
+                msg = (emoji + " <b>" + signal + " ACILDI - " + symbol + "</b>\n"
+                       "-------------------\n"
+                       "Giris: <b>" + entry + "$</b>\n"
+                       "SL: <b>" + sl + "$</b>\n"
+                       "TP1: <b>" + tp1 + "$</b>\n"
+                       "TP2: <b>" + tp2 + "$</b>\n"
+                       "Kaldirac: <b>" + str(leverage) + "x</b>\n"
+                       "Miktar: <b>" + str(qty) + "</b>\n"
+                       "Bybit onayladi!\n" + now)
             else:
-                msg = (f"⚠️ <b>{signal} HATASI — {symbol}</b>\n"
-                       f"━━━━━━━━━━━━━━━━━━\n"
-                       f"❌ Hata: {ret_msg}\n"
-                       f"📋 Kod: {ret_code}\n🕐 {now}")
+                msg = ("HATA - " + signal + " - " + symbol + "\n"
+                       "Kod: " + str(rc) + "\n"
+                       "Mesaj: " + rm + "\n" + now)
+
         elif signal == "TP1":
-            msg = (f"✅ <b>TP1 HIT — {symbol}</b>\n"
-                   f"💰 Kar: <b>+{float(risk)*1.5:.1f}$</b>\n"
-                   f"🎯 TP2 bekleniyor: {tp2}$\n🕐 {now}")
+            msg = "TP1 HIT - " + symbol + "\nKar: +" + str(float(risk)*1.5) + "$\n" + now
         elif signal == "TP2":
-            msg = (f"🏆 <b>TP2 HIT — {symbol}</b>\n"
-                   f"💰 Toplam Kar: <b>+{float(risk)*5.0:.1f}$</b>\n"
-                   f"✅ Pozisyon kapandı\n🕐 {now}")
+            msg = "TP2 HIT - " + symbol + "\nKar: +" + str(float(risk)*5.0) + "$\n" + now
         elif signal == "SL":
-            msg = (f"❌ <b>STOP LOSS — {symbol}</b>\n"
-                   f"💸 Zarar: <b>-{risk}$</b>\n"
-                   f"🔄 Yeni sinyal bekleniyor\n🕐 {now}")
+            msg = "SL HIT - " + symbol + "\nZarar: -" + risk + "$\n" + now
         else:
-            msg = f"⚡ {signal} | {symbol} | {now}"
+            msg = signal + " | " + symbol + " | " + now
 
         send_telegram(msg)
-        return jsonify({"status": "ok", "signal": signal})
+        return jsonify({"status": "ok"})
     except Exception as e:
-        print(f"Webhook error: {e}")
+        print("Error:", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/test", methods=["GET"])
 def test():
     if request.args.get("secret") != WEBHOOK_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
-    now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    send_telegram(f"✅ <b>TEST MESAJI</b>\n🕐 {now}\nBot çalışıyor!")
+    send_telegram("TEST - Bot calisiyor! " + datetime.now().strftime("%H:%M"))
     return jsonify({"status": "ok"})
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "CVİS Bot calisiyor!"})
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
