@@ -121,6 +121,31 @@ def webhook():
     return jsonify({"status": "ok", "signal": signal})
 
 
+
+# ─────────────────────────────────────────────
+# TEST ENDPOINT — Tarayıcıdan GET ile test et
+# ─────────────────────────────────────────────
+@app.route("/test", methods=["GET"])
+def test():
+    secret = request.args.get("secret", "")
+    if secret != WEBHOOK_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    signal = request.args.get("signal", "LONG")
+    now    = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    messages = {
+        "LONG":  f"🟢 <b>LONG SİNYALİ — BTCUSDT</b>\n━━━━━━━━━━━━━━━━━━\n📍 Giriş:  <b>67450$</b>\n🛑 SL:     <b>66980$</b>  (Risk: <b>-10$</b>)\n🎯 TP1:    <b>67920$</b>  (+15.0$)\n🎯 TP2:    <b>68650$</b>  (+35.0$)\n⚡ Kaldıraç: <b>10x</b>\n━━━━━━━━━━━━━━━━━━\n🕐 {now}",
+        "SHORT": f"🔴 <b>SHORT SİNYALİ — BTCUSDT</b>\n━━━━━━━━━━━━━━━━━━\n📍 Giriş:  <b>67450$</b>\n🛑 SL:     <b>67920$</b>  (Risk: <b>-10$</b>)\n🎯 TP1:    <b>66980$</b>  (+15.0$)\n🎯 TP2:    <b>66250$</b>  (+35.0$)\n⚡ Kaldıraç: <b>10x</b>\n━━━━━━━━━━━━━━━━━━\n🕐 {now}",
+        "TP1":   f"✅ <b>TP1 HIT — BTCUSDT</b>\n━━━━━━━━━━━━━━━━━━\n💰 Kar:  <b>+15.0$</b>\n📊 Pozisyonun %60\'ı kapandı\n🎯 TP2 bekleniyor\n━━━━━━━━━━━━━━━━━━\n🕐 {now}",
+        "TP2":   f"🏆 <b>TP2 HIT — BTCUSDT</b>\n━━━━━━━━━━━━━━━━━━\n💰 Toplam Kar:  <b>+50.0$</b>\n✅ Pozisyon tamamen kapandı\n━━━━━━━━━━━━━━━━━━\n🕐 {now}",
+        "SL":    f"❌ <b>STOP LOSS — BTCUSDT</b>\n━━━━━━━━━━━━━━━━━━\n💸 Zarar:  <b>-10$</b>\n🔄 Yeni sinyal bekleniyor...\n━━━━━━━━━━━━━━━━━━\n🕐 {now}",
+    }
+
+    msg = messages.get(signal, f"⚡ Test mesajı — {now}")
+    send_telegram(msg)
+    return jsonify({"status": "ok", "signal": signal, "message": "Telegram'ı kontrol et!"})
+
 # ─────────────────────────────────────────────
 # SAĞLIK KONTROLÜ
 # ─────────────────────────────────────────────
