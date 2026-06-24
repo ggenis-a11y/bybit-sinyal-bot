@@ -21,12 +21,12 @@ def send_telegram(message):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def bybit_request(method, endpoint, params):
+def bybit_request(endpoint, params):
     try:
-        ts       = str(int(time.time() * 1000))
-        recv_win = "5000"
-        body_str = json.dumps(params, separators=(",", ":"))
-        sign_str = ts + BYBIT_API_KEY + recv_win + body_str
+        ts        = str(int(time.time() * 1000))
+        recv_win  = "5000"
+        body_str  = json.dumps(params)
+        sign_str  = ts + BYBIT_API_KEY + recv_win + body_str
         signature = hmac.new(
             BYBIT_API_SECRET.encode("utf-8"),
             sign_str.encode("utf-8"),
@@ -39,42 +39,39 @@ def bybit_request(method, endpoint, params):
             "X-BAPI-RECV-WINDOW": recv_win,
             "Content-Type":       "application/json"
         }
-        url = BYBIT_BASE_URL + endpoint
-        r   = requests.post(url, data=body_str, headers=headers, timeout=10)
+        r = requests.post(BYBIT_BASE_URL + endpoint, data=body_str, headers=headers, timeout=10)
         return r.json()
     except Exception as e:
         print(f"Bybit error: {e}")
         return {"retCode": -1, "retMsg": str(e)}
 
 def set_leverage(symbol, leverage):
-    params = {
+    return bybit_request("/v5/position/set-leverage", {
         "category":     "linear",
         "symbol":       symbol,
         "buyLeverage":  str(leverage),
         "sellLeverage": str(leverage)
-    }
-    return bybit_request("POST", "/v5/position/set-leverage", params)
+    })
 
 def open_position(symbol, side, qty, sl, tp1):
-    params = {
-        "category":       "linear",
-        "symbol":         symbol,
-        "side":           side,
-        "orderType":      "Market",
-        "qty":            str(qty),
-        "stopLoss":       str(sl),
-        "takeProfit":     str(tp1),
-        "timeInForce":    "GTC",
-        "positionIdx":    0
-    }
-    return bybit_request("POST", "/v5/order/create", params)
+    return bybit_request("/v5/order/create", {
+        "category":    "linear",
+        "symbol":      symbol,
+        "side":        side,
+        "orderType":   "Market",
+        "qty":         str(qty),
+        "stopLoss":    str(sl),
+        "takeProfit":  str(tp1),
+        "timeInForce": "GTC",
+        "positionIdx": 0
+    })
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     if request.args.get("secret") != WEBHOOK_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
     try:
-        data = request.get_json(force=True) or {}
+        data     = request.get_json(force=True) or {}
         signal   = data.get("signal",   "")
         symbol   = data.get("symbol",   "ETHUSDT")
         entry    = data.get("entry",    "0")
@@ -107,7 +104,8 @@ def webhook():
             else:
                 msg = (f"⚠️ <b>{signal} HATASI — {symbol}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━\n"
-                       f"❌ Hata: {ret_msg}\n🕐 {now}")
+                       f"❌ Hata: {ret_msg}\n"
+                       f"📋 Kod: {ret_code}\n🕐 {now}")
         elif signal == "TP1":
             msg = (f"✅ <b>TP1 HIT — {symbol}</b>\n"
                    f"💰 Kar: <b>+{float(risk)*1.5:.1f}$</b>\n"
@@ -135,7 +133,7 @@ def test():
         return jsonify({"error": "Unauthorized"}), 401
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
     send_telegram(f"✅ <b>TEST MESAJI</b>\n🕐 {now}\nBot çalışıyor!")
-    return jsonify({"status": "ok", "message": "Telegram kontrol et!"})
+    return jsonify({"status": "ok"})
 
 @app.route("/", methods=["GET"])
 def health():
